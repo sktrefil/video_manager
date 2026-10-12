@@ -57,6 +57,52 @@ class JobTests(unittest.TestCase):
             with self.assertRaises(InputError):
                 run_job(path)
 
+    def test_four_to_five_stretch_json_and_decoded_frame_reuse(self):
+        from video_manager.render import decode_frames
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            paths=[make_motion_clip(root/f'{i}.mp4',5,115,count=96,fps=24) for i in range(2)]
+            raw=dict(schema_version=1,output=dict(directory='stretched',fps=24,audio_mode='mute'),
+                clips=[dict(id=f'shot_{i}',path=str(p),target_seconds=5,protect_seconds=1,
+                            max_speed=1,ramp_seconds=.5) for i,p in enumerate(paths)])
+            config=normalize_job(raw,root)
+            _,validation=validate_job(config)
+            self.assertEqual(validation['total_frames'],240)
+            disabled=copy.deepcopy(config);disabled['clips'][0]['correction_enabled']=False
+            with self.assertRaises(InputError):validate_job(disabled)
+            infeasible=copy.deepcopy(config);infeasible['clips'][0]['protect_seconds']=3.9
+            with self.assertRaises(InputError):validate_job(infeasible)
+            path=root/'stretch.json';save_job(config,path)
+            job=run_job(path)
+            report=json.loads((job/'results/report.json').read_text())
+            self.assertEqual(report['timeline_validation']['decoded_frames'],240)
+            velocity=report['decisions'][0]['velocity_planning']
+            self.assertAlmostEqual(velocity['effective_before'],velocity['source_before']*.73033707865)
+            self.assertAlmostEqual(velocity['effective_after'],velocity['source_after'])
+            self.assertAlmostEqual(report['timeline_validation']['measured_total_seconds'],10,places=5)
+            for item,source in zip(report['timeline'],paths):
+                m=item['mapping']
+                self.assertEqual(m['mode'],'stretch')
+                self.assertAlmostEqual(m['terminal_speed'],.73033707865)
+                self.assertEqual(m['peak_speed'],1)
+                rows=[r for r in report['corrected']['mapping'] if r['clip_id']==item['clip_id']]
+                selected=[r['source_frame'] for r in rows]
+                self.assertEqual(selected[:25],list(range(25)))
+                self.assertEqual(selected[-1],95)
+                self.assertEqual(selected,sorted(selected))
+                repeats=[i for i in range(1,120) if selected[i]==selected[i-1]]
+                self.assertEqual(len(repeats),24)
+                self.assertLess(repeats[0],60)
+                self.assertGreater(repeats[-1],96)
+                self.assertLessEqual(selected.count(95),2)
+                original=list(decode_frames(probe(source,'src'),160,96))
+                output=list(decode_frames(probe(job/'results'/item['files'][0],'out'),160,96))
+                self.assertEqual(len(output),120)
+                # All decoded frames agree with the selected source, including spread repeats.
+                for rendered,index in zip(output,selected):
+                    mae=sum(abs(a-b) for a,b in zip(rendered,original[index]))/len(rendered)
+                    self.assertLess(mae,5)
+
     def test_strict_invalid_config_and_no_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);raw=self.config(root)

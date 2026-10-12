@@ -38,16 +38,17 @@ class TimeMap:
     output_end: float
     protect: float
     ramp: float
-    peak: float
+    peak: float  # Terminal speed: >1 compresses, 0<speed<1 stretches.
     compressed: bool
     count: int
     fps: Fraction
     max_speed: float
+    stretched: bool = False
     source_warps: list = field(default_factory=list)
     region_warps: list = field(default_factory=list)
 
     def base_time(self, t):
-        if not self.compressed:
+        if not (self.compressed or self.stretched):
             return min(t, self.source_end)
         if t <= self.protect:
             return t
@@ -60,7 +61,7 @@ class TimeMap:
         return min(self.source_end, t+(self.peak-1)*extra)
 
     def base_speed(self, t):
-        if not self.compressed or t <= self.protect:
+        if not (self.compressed or self.stretched) or t <= self.protect:
             return 1.0
         u = min(1.0, (t-self.protect)/self.ramp)
         return 1+(self.peak-1)*(3*u*u-2*u*u*u)
@@ -82,13 +83,17 @@ class TimeMap:
         return value
 
     def speed_bound(self):
-        return (self.peak * math.prod(1+abs(w[2]) for w in self.source_warps)
+        return (max(1.0, self.peak) * math.prod(1+abs(w[2]) for w in self.source_warps)
                 * math.prod(1+(2 if kind=='hold' else .25)*abs(amount)
                             for _,_,kind,amount in self.region_warps))
 
     def describe(self):
-        return dict(compressed=self.compressed, protect_seconds=self.protect,
-                    ramp_seconds=self.ramp, peak_speed=self.peak, max_speed=self.max_speed,
+        return dict(compressed=self.compressed, stretched=self.stretched,
+                    mode="stretch" if self.stretched else "compress" if self.compressed else "identity",
+                    protect_seconds=self.protect,
+                    ramp_seconds=self.ramp, peak_speed=max(1.0,self.peak),
+                    terminal_speed=self.peak, minimum_speed=min(1.0,self.peak),
+                    frame_policy="nearest_source_frame_no_interpolation", max_speed=self.max_speed,
                     conservative_composed_speed_bound=self.speed_bound(),
                     source_last_display_seconds=self.source_end, output_last_display_seconds=self.output_end,
                     output_frames=self.count, internal_region_warps=[dict(start=s,end=e,kind=k,amount=a) for s,e,k,a in self.region_warps], source_warps=[dict(side=s,width=w,alpha=a) for s,w,a in self.source_warps])
@@ -102,28 +107,31 @@ def build_map(clip, target, protect, max_speed, ramp, count, fps, *, enabled=Tru
     tolerance = float(1/fps)
     if protect > clip.duration+1e-9:
         raise InputError(f'{clip.id}: protection exceeds source duration')
-    if target > clip.duration+tolerance:
-        raise InputError(f'{clip.id}: duration extension is not supported')
     compressed = target < clip.duration-tolerance
-    if not enabled and compressed:
+    stretched = target > clip.duration+tolerance
+    if not enabled and (compressed or stretched):
         raise InputError(f'{clip.id}: disabled correction conflicts with target duration')
     if len(clip.frames)>1 and count<2:
         raise InputError(f'{clip.id}: at least two frames are required to preserve endpoints')
     source_end = clip.frames[-1]['source_seconds']
     output_end = (count-1)/float(fps)
-    if not compressed:
+    if not (compressed or stretched):
         return TimeMap(source_end, output_end, protect, ramp, 1.0, False, count, fps, max_speed)
     if protect >= target or protect >= output_end:
         raise InputError(f'{clip.id}: protection must end before the last output frame')
     available = output_end-protect
     if ramp > available+1e-10:
         raise InputError(f'{clip.id}: ramp_seconds exceeds the available unprotected interval')
-    if source_end < output_end:
+    if protect >= source_end:
+        raise InputError(f'{clip.id}: protection must end before the last source frame')
+    if compressed and source_end < output_end:
         raise InputError(f'{clip.id}: cannot compress the displayed timeline with these frame durations')
     peak = 1+(source_end-output_end)/(available-ramp/2)
+    if peak <= 1e-9:
+        raise InputError(f'{clip.id}: required terminal speed must be positive; protection/ramp leaves no feasible motion')
     if peak > max_speed+1e-10:
         raise InputError(f'{clip.id}: required peak speed {peak:.4f} exceeds max_speed {max_speed:g}')
-    return TimeMap(source_end, output_end, protect, ramp, peak, True, count, fps, max_speed)
+    return TimeMap(source_end, output_end, protect, ramp, peak, compressed, count, fps, max_speed, stretched=stretched)
 
 
 def add_boundary_warp(mapping, side, width, alpha):

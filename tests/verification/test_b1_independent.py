@@ -57,7 +57,7 @@ class IndependentB1(unittest.TestCase):
    self.assertTrue(all(abs(x/24-1.013)<=1/24 for x in counts))
   for bad in [True,'3',None,float('nan'),float('inf'),-1,0]:
    with self.assertRaises(InputError):allocate_frames([bad],Fraction(24))
-  for target,protect,limit,ramp,enabled in [(3,3,12,.5,True),(3,1,2,.5,True),(11,1,12,.5,True),(3,1,12,3,True),(10,11,12,.5,False),(3,1,12,.5,False)]:
+  for target,protect,limit,ramp,enabled in [(3,3,12,.5,True),(3,1,2,.5,True),(3,1,12,3,True),(10,11,12,.5,False),(3,1,12,.5,False)]:
    with self.assertRaises(InputError):build_map(c,target,protect,limit,ramp,72,Fraction(24),enabled=enabled)
 
 if __name__=='__main__':unittest.main()

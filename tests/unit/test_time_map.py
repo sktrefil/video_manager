@@ -26,6 +26,34 @@ class TimeMapTests(unittest.TestCase):
         self.assertEqual(schedule[:41],list(range(41)))
         self.assertEqual(schedule[-1],199)
 
+    def test_stretch_protection_smoothness_and_distributed_repeats(self):
+        c=clip(4)
+        m=build_map(c,5,1,12,.5,100,Fraction(20))
+        self.assertTrue(m.stretched)
+        self.assertFalse(m.compressed)
+        self.assertGreater(m.peak,0)
+        self.assertLess(m.peak,1)
+        self.assertEqual(m.describe()['peak_speed'],1)
+        self.assertEqual(m.speed_bound(),1)
+        self.assertAlmostEqual(m.base_speed(1),1)
+        self.assertAlmostEqual(m.base_speed(1+1e-6),1)
+        self.assertAlmostEqual(m.source_time(m.output_end),3.95)
+        times=[m.source_time(i*m.output_end/1000) for i in range(1001)]
+        self.assertTrue(all(a<b for a,b in zip(times,times[1:])))
+        schedule=select_schedule(c,m)
+        self.assertEqual(schedule[:21],list(range(21)))
+        self.assertEqual(schedule[-1],79)
+        repeats=[i for i in range(1,100) if schedule[i]==schedule[i-1]]
+        self.assertEqual(len(repeats),20)
+        self.assertLess(repeats[0],50)
+        self.assertGreater(repeats[-1],80)
+        self.assertLessEqual(schedule.count(79),2)
+        with self.assertRaises(InputError):
+            build_map(c,5,1,12,.5,100,Fraction(20),enabled=False)
+        for protection,ramp in [(4,.5),(3.8,.5),(1,4)]:
+            with self.assertRaises(InputError):
+                build_map(c,5,protection,12,ramp,100,Fraction(20))
+
     def test_total_budget_does_not_accumulate_rounding(self):
         targets=[1.01]*10
         counts=allocate_frames(targets,Fraction(24))
@@ -38,7 +66,6 @@ class TimeMapTests(unittest.TestCase):
         c=clip()
         for kwargs in [dict(target=4,protect=4,max_speed=12,ramp=.5),
                        dict(target=4,protect=2,max_speed=2,ramp=.5),
-                       dict(target=11,protect=1,max_speed=12,ramp=.5),
                        dict(target=4,protect=3.8,max_speed=12,ramp=.5),
                        dict(target=4,protect=-1,max_speed=12,ramp=.5),
                        dict(target=4,protect=1,max_speed=True,ramp=.5)]:

@@ -42,6 +42,21 @@ class DesktopTests(unittest.TestCase):
         return normalize_job(dict(schema_version=1,output=dict(directory=str(self.root/'result'),fps=20),
             clips=[dict(id=f'shot{i}',path=str(p),target_seconds=count/20,protect_seconds=.3,max_speed=9,ramp_seconds=.2) for i,p in enumerate(paths)]),self.root)
 
+    def test_stretched_speed_plot_draws_deceleration(self):
+        from video_manager.ui.viewer import SpeedPlot
+        plot=SpeedPlot();plot.resize(500,160)
+        plot.set_model(dict(output_last_display_seconds=119/24,peak_speed=1,
+            terminal_speed=.730337,protect_seconds=1,ramp_seconds=.5,
+            compressed=False,stretched=True))
+        plot.show();QTest.qWait(20)
+        rendered=plot.grab().toImage()
+        def curve_y(x):
+            rows=[y for y in range(25,135) if rendered.pixelColor(x,y).name()=='#2767ac']
+            self.assertTrue(rows)
+            return sum(rows)/len(rows)
+        self.assertGreater(curve_y(450),curve_y(50)+20)
+        plot.close()
+
     def test_master_json_fills_targets_and_preserves_local_paths(self):
         paths=[make_motion_clip(self.root/name,5+i*30,35+i*30,count=100)
                for i,name in enumerate(['01_02.mp4','01_03.mp4'])]

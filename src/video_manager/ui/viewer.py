@@ -101,13 +101,13 @@ class SpeedPlot(QWidget):
         painter.setPen(QColor('#263444'))
         painter.drawText(10,18,'Base speed curve (boundary/internal adjustments listed in report)')
         if not self.model:return
-        m=self.model;end=m['output_last_display_seconds'];peak=m['peak_speed'];protect=m['protect_seconds'];ramp=m['ramp_seconds']
+        m=self.model;end=m['output_last_display_seconds'];peak=m.get('terminal_speed',m['peak_speed']);protect=m['protect_seconds'];ramp=m['ramp_seconds']
         painter.setPen(QPen(QColor('#2767ac'),2))
         old=None
         for i in range(101):
             t=end*i/100;u=min(1,max(0,(t-protect)/ramp))
-            speed=1+(peak-1)*(3*u*u-2*u*u*u) if m['compressed'] else 1
+            speed=1+(peak-1)*(3*u*u-2*u*u*u) if m['compressed'] or m.get('stretched',False) else 1
             x=15+(self.width()-30)*i/100;y=self.height()-20-(self.height()-55)*speed/max(1,peak)
             if old:painter.drawLine(old[0],old[1],int(x),int(y))
             old=(int(x),int(y))
-        painter.setPen(QColor('#263444'));painter.drawText(10,self.height()-3,f'0 → {end:.3f}s · peak {peak:.2f}× · protect {protect:.2f}s')
+        painter.setPen(QColor('#263444'));painter.drawText(10,self.height()-3,f'0 → {end:.3f}s · terminal {peak:.2f}× · protect {protect:.2f}s')
