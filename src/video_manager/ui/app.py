@@ -18,6 +18,7 @@ from ..errors import InputError
 from ..internal_motion import load_selections
 from ..job_schema import load_job,normalize_job,save_job
 from ..probe import probe
+from ..timing_reference import load_master_timings
 from .viewer import ComparisonViewer,SpeedPlot
 
 
@@ -210,7 +211,20 @@ class MainWindow(QMainWindow):
         self._loading=False;self.mark_dirty()
         for c in config['clips']:self.request_probe(c['path'])
 
-    def load_json(self,path):self.set_config(load_job(path))
+    def load_json(self,path):
+        try:data=json.loads(Path(path).read_text(encoding='utf-8-sig'))
+        except (OSError,ValueError) as exc:raise InputError(f'Cannot load JSON: {exc}') from exc
+        if isinstance(data,dict) and 'records' in data and 'clips' not in data:
+            paths=[self.clip_table.item(row,2).text() for row in range(self.clip_table.rowCount())]
+            targets=load_master_timings(path,paths)
+            self._loading=True
+            try:
+                for row,target in enumerate(targets):self.clip_table.item(row,4).setText(f'{target:g}')
+            finally:self._loading=False
+            self.mark_dirty()
+            self.state_label.setText(f'Master timings loaded for {len(targets)} clips · total {sum(targets):g}s · save job JSON before running')
+            return
+        self.set_config(load_job(path))
     def save_json(self,path,overwrite=False):return save_job(self.build_config(),path,overwrite=overwrite)
 
     def load_motion_report(self,path,selected=(),excluded=()):
@@ -337,7 +351,7 @@ class MainWindow(QMainWindow):
         paths,_=QFileDialog.getOpenFileNames(self,'Add clips','','Video files (*.mp4 *.mov *.mkv *.webm);;All files (*)')
         for path in paths:self.add_clip(path)
     def choose_load(self):
-        path,_=QFileDialog.getOpenFileName(self,'Load job','','JSON (*.json)')
+        path,_=QFileDialog.getOpenFileName(self,'Load job or I2V Master timings','','JSON (*.json)')
         if path:self.load_json(path)
     def choose_save(self):
         path,_=QFileDialog.getSaveFileName(self,'Save job','','JSON (*.json)')

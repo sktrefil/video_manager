@@ -42,6 +42,26 @@ class DesktopTests(unittest.TestCase):
         return normalize_job(dict(schema_version=1,output=dict(directory=str(self.root/'result'),fps=20),
             clips=[dict(id=f'shot{i}',path=str(p),target_seconds=count/20,protect_seconds=.3,max_speed=9,ramp_seconds=.2) for i,p in enumerate(paths)]),self.root)
 
+    def test_master_json_fills_targets_and_preserves_local_paths(self):
+        paths=[make_motion_clip(self.root/name,5+i*30,35+i*30,count=100)
+               for i,name in enumerate(['SC01 · 01-02.mp4','SC01 · 01-03.mp4'])]
+        for path in paths:self.window.add_clip(path)
+        wait_until(lambda:not self.window.probers)
+        master=self.root/'Master.json'
+        master.write_text(json.dumps({'shot_count':2,'edit_duration_seconds':7,'records':[
+            {'scene':'SC01','cut':'01-02','start_s':4,'end_s':7,'edit_duration_s':3},
+            {'scene':'SC01','cut':'01-03','start_s':7,'end_s':11,'edit_duration_s':4}]}),encoding='utf-8')
+        original_paths=[self.window.clip_table.item(row,2).text() for row in range(2)]
+        original_output=self.window.output_edit.text()
+        self.window.load_json(master)
+        self.assertEqual([self.window.clip_table.item(row,4).text() for row in range(2)],['3','4'])
+        self.assertEqual([self.window.clip_table.item(row,2).text() for row in range(2)],original_paths)
+        self.assertEqual(self.window.output_edit.text(),original_output)
+        self.assertIn('7s',self.window.state_label.text())
+        master.write_text(json.dumps({'records':[{'scene':'SC01','cut':'01-02','start_s':4,'end_s':7,'edit_duration_s':3}]}),encoding='utf-8')
+        with self.assertRaises(InputError):self.window.load_json(master)
+        self.assertEqual([self.window.clip_table.item(row,4).text() for row in range(2)],['3','4'])
+
     def test_json_controls_motion_roundtrip_stale_denial(self):
         config=self.config();self.window.set_config(config);wait_until(lambda:not self.window.probers)
         self.window.clip_table.item(0,4).setText('1.5');self.window.clip_table.item(0,5).setText('0.4')
