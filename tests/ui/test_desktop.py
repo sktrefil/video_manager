@@ -44,7 +44,7 @@ class DesktopTests(unittest.TestCase):
 
     def test_master_json_fills_targets_and_preserves_local_paths(self):
         paths=[make_motion_clip(self.root/name,5+i*30,35+i*30,count=100)
-               for i,name in enumerate(['SC01 · 01-02.mp4','SC01 · 01-03.mp4'])]
+               for i,name in enumerate(['01_02.mp4','01_03.mp4'])]
         for path in paths:self.window.add_clip(path)
         wait_until(lambda:not self.window.probers)
         master=self.root/'Master.json'

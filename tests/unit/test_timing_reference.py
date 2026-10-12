@@ -30,6 +30,8 @@ class MasterTimingTests(unittest.TestCase):
         self.write()
         self.assertEqual(load_master_timings(self.path, [
             Path('SC01 · 01-03.mp4'), Path('SC01 · 01-02.mp4')]), [4, 3])
+        self.assertEqual(load_master_timings(self.path, [
+            Path('01_02.mp4'), Path('01_03.mp4')]), [3, 4])
 
     def test_missing_or_ambiguous_records_fail_before_any_ui_change(self):
         self.write()

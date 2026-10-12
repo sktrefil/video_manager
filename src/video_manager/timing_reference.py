@@ -8,15 +8,20 @@ from .errors import InputError
 
 
 _CLIP_NAME = re.compile(r'^SC(\d{1,2})\s*[·._ -]+\s*(\d{1,2})[-_](\d{1,2})$', re.IGNORECASE)
+_SHORT_NAME = re.compile(r'^(\d{1,2})[-_](\d{1,2})$')
 _CUT = re.compile(r'^(\d{1,2})-(\d{1,2})$')
 
 
 def clip_key(path):
     name = Path(path).stem
     match = _CLIP_NAME.fullmatch(name)
-    if not match:
+    if match:
+        scene, scene_in_cut, shot = map(int, match.groups())
+    elif match := _SHORT_NAME.fullmatch(name):
+        scene_in_cut, shot = map(int, match.groups())
+        scene = scene_in_cut
+    else:
         raise InputError(f'Cannot match clip name to Master scene/cut: {name}')
-    scene, scene_in_cut, shot = map(int, match.groups())
     if scene != scene_in_cut:
         raise InputError(f'Scene and cut disagree in clip name: {name}')
     return f'SC{scene:02d}', f'{scene_in_cut:02d}-{shot:02d}'
