@@ -1,6 +1,7 @@
 """Boundary-centered F2 comparison with one clock and no extra retiming."""
 from fractions import Fraction
 from pathlib import Path
+import shutil
 
 from PIL import Image, ImageDraw
 
@@ -9,11 +10,14 @@ from .render import Encoder, decode_frames
 
 
 def compare_boundaries(output: Path, baseline: dict, corrected: dict, window: float,
-                       prefixes=None,output_prefix="comparison",labels=None,windows=None):
+                       prefixes=None,output_prefix="comparison",labels=None,windows=None,
+                       preview_output=None):
+    from .progress import report as report_progress
     fps = Fraction(baseline['fps'])
     width, height = baseline['width'], baseline['height']
     half = max(1, round(window * float(fps)))
     comparisons = []
+    report_progress('Creating comparison videos',0,len(baseline['boundaries']))
     for index, (left_boundary, right_boundary) in enumerate(zip(baseline['boundaries'], corrected['boundaries']), 1):
         half = max(1, round((windows[index-1] if windows is not None else window) * float(fps)))
         centers = [left_boundary['output_frame'], right_boundary['output_frame']]
@@ -54,4 +58,14 @@ def compare_boundaries(output: Path, baseline: dict, corrected: dict, window: fl
             encoder.close(failed)
         comparisons.append(dict(boundary=index, video=name, fps=str(fps),
                                 boundary_frame_in_comparison=half, mapping=rows))
+        # Encoder.close() has finalized the MP4; the UI can now open it safely.
+        preview=output/name
+        if preview_output is not None:
+            try:
+                preview_output=Path(preview_output)
+                preview_output.mkdir(parents=True,exist_ok=True)
+                preview=Path(shutil.copyfile(preview,preview_output/name))
+            except OSError:preview=None
+        report_progress('Creating comparison videos',index,len(baseline['boundaries']),
+                        completed_video=preview)
     return comparisons

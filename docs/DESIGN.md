@@ -142,7 +142,7 @@ tests/
   "output": {
     "directory": "outputs/job_001",
     "fps": 30,
-    "audio_mode": "mute"
+    "audio_mode": "preserve"
   },
   "clips": [
     {

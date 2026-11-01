@@ -4,6 +4,9 @@ import sys
 
 
 def main():
+    from video_manager import progress
+    progress.enabled=True
+    progress.report('Preparing inputs')
     if os.name=='posix':
         os.setsid()
     from video_manager.cli import main as cli_main

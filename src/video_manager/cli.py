@@ -42,16 +42,26 @@ def main(argv=None) -> int:
     retiming.add_argument("--remove-duplicates", action="store_true")
     retiming.add_argument("--disable-clip", type=int, action="append", default=[])
     retiming.add_argument("--disable-boundary", type=int, action="append", default=[])
-    retiming.add_argument("--audio-mode", choices=["mute"], default="mute")
+    retiming.add_argument("--audio-mode", choices=["preserve","mute"], default="preserve",
+                          help="Remove dialogue while retaining music/effects (default), or mute all audio")
     retiming.add_argument("--motion-report", action="append", default=[])
     retiming.add_argument("--select-region", action="append", default=[])
     retiming.add_argument("--exclude-region", action="append", default=[])
+    retiming.add_argument('--interpolate',action='store_true',help='Opt in to guarded CPU frame interpolation')
+    retiming.add_argument('--stabilize',action='store_true',help='Opt in to limited camera stabilization')
+    retiming.add_argument('--stabilize-strength',type=float,default=.7)
+    retiming.add_argument('--stabilize-smoothing',type=float,default=.4,help='Smoothing window seconds')
+    retiming.add_argument('--max-crop',type=float,default=.05,help='Maximum fraction removed per full dimension, not per edge')
+    retiming.add_argument('--remove-gemini-mark',action='store_true',
+                          help='Inpaint the fixed lower-right mark observed in the sample videos')
     inspection=commands.add_parser("inspect-motion",help="Find internal motion suspicions and render unselected proposal previews")
     inspection.add_argument("clips",nargs="+")
     inspection.add_argument("--output",required=True)
     inspection.add_argument("--freeze-seconds",type=float,default=.2)
     inspection.add_argument("--change-ratio",type=float,default=2.5)
     inspection.add_argument("--window",type=float,default=.4)
+    inspection.add_argument('--analysis-version',choices=['motion-v1','motion-v2'],default='motion-v2',
+                            help='Use legacy v1 only to reproduce earlier analyses; default v2 separates camera/object motion')
     runjob=commands.add_parser("run-job",help="Validate and execute a version-1 JSON job")
     runjob.add_argument("job")
     runjob.add_argument("--output",help="Override output with a new directory")
@@ -59,6 +69,7 @@ def main(argv=None) -> int:
     validatejob.add_argument("job")
     validatejob.add_argument("--output")
     commands.add_parser("gui",help="Launch optional PySide6 desktop interface")
+    commands.add_parser("frame-capture", help="Launch the standalone video frame image saver")
     args = parser.parse_args(argv)
     try:
         if args.command == "gui":
@@ -67,6 +78,12 @@ def main(argv=None) -> int:
             except ModuleNotFoundError as exc:
                 raise VideoManagerError("Install optional UI dependencies: pip install -r requirements-ui.txt") from exc
             return gui_main()
+        elif args.command == "frame-capture":
+            try:
+                from .ui.frame_capture import main as capture_main
+            except ModuleNotFoundError as exc:
+                raise VideoManagerError("Install optional UI dependencies: pip install -e '.[gui]'") from exc
+            return capture_main()
         elif args.command == "doctor":
             print(json.dumps(diagnose(), indent=2))
         elif args.command in ["run-job","validate-job"]:
@@ -79,7 +96,7 @@ def main(argv=None) -> int:
         elif args.command == "inspect-motion":
             from .internal_motion import inspect_motion
             result=inspect_motion(args.clips,args.output,dict(freeze_seconds=args.freeze_seconds,
-                change_ratio=args.change_ratio,window_seconds=args.window))
+                change_ratio=args.change_ratio,window_seconds=args.window),version=args.analysis_version)
             print(f"Internal motion review: {result}")
         elif args.command == "retime":
             from .retime import retime
@@ -87,7 +104,11 @@ def main(argv=None) -> int:
                 max_speed=args.max_speed,ramp=args.ramp,window=args.window,strength=args.strength,
                 local_speed=args.local_speed,remove_duplicates=args.remove_duplicates,
                 disabled_clips=args.disable_clip,disabled_boundaries=args.disable_boundary,audio_mode=args.audio_mode,
-                motion_reports=args.motion_report,selected_regions=args.select_region,excluded_regions=args.exclude_region)
+                motion_reports=args.motion_report,selected_regions=args.select_region,excluded_regions=args.exclude_region,
+                enhancements=dict(interpolation=dict(enabled=args.interpolate,backend='cpu_flow'),
+                    stabilization=dict(enabled=args.stabilize,strength=args.stabilize_strength,
+                        smoothing_seconds=args.stabilize_smoothing,max_crop_fraction=args.max_crop),
+                    watermark=dict(enabled=args.remove_gemini_mark)))
             print(f"Retimed job: {result}")
         elif args.command == "boundaries":
             result = boundaries(args.clips, args.output, window=args.window, strength=args.strength,

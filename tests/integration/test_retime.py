@@ -65,7 +65,7 @@ class RetimeTests(unittest.TestCase):
             with self.assertRaises(InputError):
                 retime([str(p) for p in inputs],str(root/'disabled'),targets=[4,5],disabled_clips=[1])
             with self.assertRaises(InputError):
-                retime([str(p) for p in inputs],str(root/'audio'),targets=[4,5],audio_mode='preserve')
+                retime([str(p) for p in inputs],str(root/'audio'),targets=[4,5],audio_mode='remove_speech')
 
     def test_vfr_nonzero_start_mixed_fps_fractional_budgets(self):
         with tempfile.TemporaryDirectory() as tmp:

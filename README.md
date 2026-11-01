@@ -1,7 +1,7 @@
 # video_manager
 
 공유 끝·시작 이미지를 사용하는 생성 영상의 연결부 분석과 후반 시간 조절 도구입니다.
-현재 구현 범위는 **A1~A4 연결부 진단 + B1 시간 압축·확장 + B2 내부 움직임 검토 + C JSON 작업 + D 데스크톱 UI**입니다.
+현재 구현 범위는 **A1~A4 연결부 진단 + B1 시간 압축·확장 및 원본 오디오 유지 + B2 내부 움직임 검토 + C JSON 작업 + D 데스크톱 UI**입니다.
 실제 영상의 자연스러움과 Windows 배포판은 별도 검증 대상입니다.
 
 ## 개발 환경
@@ -84,7 +84,7 @@ A1의 `prepare`는 **파일 경로만 검사**합니다. 실제 미디어 유효
 가장 가까운 원본 PTS의 프레임을 선택하고 같은 거리이면 이전 프레임을 선택합니다.
 각 클립의 첫·끝 프레임을 보존합니다. FPS 변환 때문에 프레임이 반복·제외될 수 있으며
 프레임 반올림에 따른 길이 차이를 보고합니다. 이 단계에는 연결부 보정·시간 압축이 없습니다.
-**오디오는 출력에서 제외**하며 원본의 오디오 존재 여부는 보고합니다.
+`prepare` 기준 영상과 경계 진단본은 오디오를 제외하며 원본의 오디오 존재 여부를 보고합니다. `Run job`의 제작 결과는 기본적으로 원본 오디오를 유지합니다.
 
 `results/` 산출물:
 
@@ -231,7 +231,7 @@ B1의 `--remove-duplicates`는 고정 프레임 예산·보호 구간·끝 이�
 
 보고서 `timeline`에 요청 시간·배분 프레임·최종 배치·실측 길이·오차·보호·속도 곡선을,
 `timeline_validation`에 전체 길이·디코딩 프레임 수·연속 PTS 검사 결과를 기록합니다.
-출력 오디오는 제외하며 `--audio-mode mute`만 지원합니다. 실제 클립 제작은 후속 B2·C·D 코드 검증 후 진행합니다.
+기본 `--audio-mode preserve`는 원본 음성·음악·효과음을 모두 영상 시간표에 맞춰 유지합니다. 오디오 처리에 분리 모델은 사용하지 않습니다. `--audio-mode mute`로 전체 오디오를 끌 수도 있습니다.
 
 ## B2: 클립 내부 의심 구간과 선택 보정
 
@@ -296,10 +296,11 @@ B1의 `--remove-duplicates`는 고정 프레임 예산·보호 구간·끝 이�
 | 위치 | 필드 |
 | --- | --- |
 | 최상위 | `schema_version: 1`, `output`, 순서 있는 `clips`, 선택적 `boundaries`, `internal_motion` |
-| `output` | 필수 `directory`, `fps`(생략/null이면 첫 원본, 지정 시 1~120), `audio_mode: "mute"` |
+| `output` | 필수 `directory`, `fps`(생략/null이면 첫 원본, 지정 시 1~120), `audio_mode: "preserve"`(기본) 또는 `"mute"` |
 | 각 clip | 필수 `id`, `path`, `target_seconds`; `protect_seconds: 1`, `max_speed: 12`, `ramp_seconds: 0.5`, `correction_enabled: true` |
 | 각 boundary | 필수 `from`, `to`; `enabled: true`, `mode: "manual"`, `window_seconds: 0.5`, `strength: 0.3`, `local_speed: false`, `duplicate_policy: "review"` |
 | `internal_motion` | `reports: []`(분석 보고서 경로), `selected_ids: []`, `excluded_ids: []` |
+| `narration` | 선택적 TTS `audio_path`, 최종 자막 `subtitle_srt`, 30샷 매핑 `shot_mapping_csv` 경로와 `subtitle_style`(설치/추가 폰트·색·크기·정렬·외곽선·배경) |
 
 클립 ID는 중복 없는 1~48자의 영문·숫자·밑줄·하이픈입니다. `baseline`, `corrected`, `comparison`으로
 시작하거나 `_diagnostic`으로 끝나는 예약 파일명은 거절합니다. 파일 경로에는 공백·한글을 사용할 수 있습니다.
@@ -309,7 +310,7 @@ B1의 `--remove-duplicates`는 고정 프레임 예산·보호 구간·끝 이�
 
 `duplicate_policy`는 `review`, `keep`, `remove`를 받습니다. B1 고정 예산 모드의 `remove`는
 끝 이미지·보호·길이를 우선하므로 제거 보류 사유를 결과에 기록합니다. `mode`는 현재 `manual`,
-오디오는 `mute`만 지원하며 다른 값은 거절합니다. 알 수 없는 키·잘못된 타입·중복 JSON 키·NaN·Infinity·
+오디오 모드는 `preserve`와 `mute`를 지원합니다. `preserve`는 원본 음성·음악·효과음을 영상 타이밍에 맞춰 유지하며, 시간 압축·확장 구간에서는 속도와 음높이가 함께 변합니다. 알 수 없는 키·잘못된 타입·중복 JSON 키·NaN·Infinity·
 중복 ID·비인접 경계·파일 누락·기존 출력·오래된 내부 분석 선택도 실행 전에 거절합니다.
 
 성공 결과에는 `executed_job.json`(절대 경로로 정규화한 실제 설정), 원본 JSON과 정규화 설정의
@@ -338,22 +339,35 @@ result = run_job(config, output_override="outputs/new-job")
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m unittest discover -s tests/ui -v
 ```
 
+After a timing job completes, the `results` folder automatically contains PNG stills of the final displayed frame: `corrected_last_frame.png` for the complete corrected video and `<clip_id>_last_frame.png` beside each separately exported clip. In **Process clips independently** mode, each output gets its own `<clip_id>_last_frame.png`.
+
+In the `Clips & timing` tab, enable **Process clips independently (do not join them)** to shorten one or more inputs into separate MP4 files. The outputs are named after their clip IDs and appear directly in the job's `results` folder; no joined `corrected.mp4` is produced. This mode does not support narration or selected/excluded internal-motion regions.
+
 UI 의존성은 PySide6 6.8.2.1로 고정했으며 CLI만 쓸 때는 설치하지 않아도 됩니다.
 일반 화면 표시에는 데스크톱 세션이 필요합니다. Linux offscreen 기능 검증을 수행했으며
 Windows 실행 파일·설치 프로그램이나 실제 Windows 동작을 검증했다고 주장하지 않습니다.
 
 - **Clips & timing:** 클립 추가·삭제·순서 변경, 원본 길이, 목표·보호·배속 상한·전환 폭·활성 여부,
   새 출력 경로와 공통 FPS를 편집합니다. 원본 정보 읽기는 별도 스레드에서 실행합니다.
+  `Load JSON` 버튼으로 저장된 작업 JSON을 성공적으로 불러오면 원본 작업 JSON 파일을 삭제합니다.
+  다음 `Save JSON`은 삭제한 경로를 기본값으로 제안하며, 새로 저장하기 전까지 해당 파일은 없습니다.
+  제작용 Master 시간표 JSON은 이후 클립 추가에도 필요하므로 삭제하지 않습니다.
+  `Load JSON`이나 `Add clips` 후 Target이 10초인 행은 빨간색으로 표시하고 Enabled를 자동 해제합니다.
+  Master 적용이나 Target 수정으로 정상 길이가 되면 빨간 표시가 사라지고, 이 경고가 자동으로 끈 Enabled도 다시 켭니다.
 - **제작 Master 시간표:** 로컬 MP4를 먼저 추가한 뒤 `Load JSON`에서 `I2V_30Clips_Master.json`을
   선택하면 파일명의 `01_02.mp4` 또는 `SC01 · 01-02.mp4` 같은 장면·컷 번호를 `records[].scene`과 `records[].cut`에
   맞춰 `edit_duration_s`를 Target에 채웁니다. 클립 경로·순서·출력 경로와 기존 경계 설정은 유지합니다.
   일치하지 않는 파일명, 빠진 컷, 중복 컷 또는 `start_s`/`end_s`와 목표 시간의 불일치가 있으면
   적용 전에 오류를 표시합니다. Master에는 MP4 경로가 없으므로 클립을 먼저 추가해야 합니다.
+  Master를 불러온 뒤 추가하는 클립에도 해당 컷의 목표 길이를 자동 적용하고, Master에 없는 컷은 추가하지 않습니다.
+  저장된 작업 JSON을 다시 불러오면 그 파일의 Target 값을 사용하므로, 제작 Master와 값이 다른 옛 작업 파일은
+  Master를 다시 불러온 뒤 새 작업 JSON으로 저장하세요.
   적용 후 `Save JSON`은 실제 렌더 작업 형식의 별도 JSON을 저장합니다. `Index.csv`와 검토용 HTML은
   시간표 확인 자료이며 이 버튼에서 직접 가져오지는 않습니다.
 - **Boundaries:** 인접 경계별 활성·창·강도·국소 변속·중복 정책을 조절합니다.
 - **Internal motion:** Inspect motion으로 별도 분석 작업을 시작하거나 보고서를 불러옵니다.
-  구간 시간·종류·근거를 보고 선택·제외 체크를 지정합니다. 행을 두 번 클릭하면 제안 비교를 엽니다.
+  분석이 끝나면 이 탭이 자동으로 열리고 화면에 검토 순서가 표시됩니다. 구간 시간·종류·근거를 확인하고,
+  행을 두 번 클릭해 제안 비교를 본 뒤 선택·제외 체크를 지정합니다. 검토 후 Save JSON, Run job 순으로 실행합니다.
 - **Review & results:** 하나로 결합된 비교 영상을 공통 시계로 재생·일시정지·탐색·프레임 이동·반복합니다.
   원본·출력 위치는 영상에 표시됩니다. 클립별 시작·끝·실측 길이·오차와 기본 속도 곡선을 확인합니다.
   Load results로 기존 작업 폴더를 열 수도 있습니다.
@@ -363,10 +377,10 @@ Load/Save JSON과 실행은 C의 동일한 검증·저장 API를 사용합니다
 분석 보고서의 원본이 바뀌면 선택을 거절합니다. 곡선은 보호·전환 폭·목표·배속 값을 편집하고
 재실행하여 갱신하며, 그래프는 기본 압축 곡선입니다. 합성한 경계·내부 조절은 결과 보고서에 따로 기록합니다.
 
-렌더링·내부 분석은 GUI와 분리된 작업 프로세스에서 수행합니다. 진행률은 엔진이 실제 세부 비율을
-제공하지 않으므로 실행 중 표시를 사용합니다. Linux Cancel은 작업 프로세스 그룹에 SIGINT를 보내
+렌더링·내부 분석은 GUI와 분리된 작업 프로세스에서 수행합니다. 경과 시간과 현재 단계의 처리량·예상 남은 시간을
+표시하며 처리량이 없는 단계는 계산 중으로 표시합니다. 예상 시간은 전체 작업이 아닌 현재 단계 기준입니다. Linux Cancel은 작업 프로세스 그룹에 SIGINT를 보내
 정리를 기다리고, 취소 결과를 성공 영상으로 공개하지 않습니다. 오류와 작업 로그를 화면에 표시합니다.
-출력은 음소거이며 원본 파일을 수정하지 않습니다.
+기본 출력은 원본 오디오를 모두 유지합니다. `audio_mode: "mute"`를 선택하면 전체 오디오를 끕니다. 원본 파일은 수정하지 않습니다.
 
 ### 압축 후 연결부 속도 계획 보완
 
@@ -375,3 +389,93 @@ B1의 경계 조절은 원본 측정 속도에 **기본 압축 곡선의 경계 
 따라서 10초→3초 압축으로 이미 빨라진 끝부분을 원본 속도만 보고 더 가속하는 오류를 피합니다.
 보고서 `velocity_planning`에 원본 속도·유효 속도·목표와 판단 이유를 남깁니다. 실제 움직임 추정은
 여전히 휴리스틱이며 육안상 자연스러움을 보장하지 않습니다.
+
+### 범용 움직임 분석 v2 (1차 개선)
+
+새 `Inspect motion`은 `motion-v2` 보고서를 생성합니다. 영상의 표시 종횡비를 유지하고 피라미드 추적으로
+전역 카메라 이동과 지역 물체 움직임을 나눕니다. 장면 전환·광량 변화·추적 실패·상반된 물체 움직임은
+판단 보류 근거로 남깁니다. 지역 추적은 의미 단위의 사람/사물 인식이 아니며 의도된 정지 여부를 자동 판단하지 않습니다.
+
+선택한 시간 보정 후보는 실제 목표 길이와 출력 프레임 선택을 기준으로 여러 강도를 비교합니다.
+추적 거리 기반 가속 변동 감소, 이동 범위, 반복 프레임 증가 제한을 통과한 후보만 적용합니다.
+효과가 없거나 보호 구간·최대 배속에 걸리면 미적용 이유를 보고합니다. 이 점수는 시각 품질 인증이 아닙니다.
+의도된 정지와 구별할 근거가 없는 반복/정지 구간 및 그 정지와 겹치는 속도 후보는 진단만 표시하며
+보정 선택을 막습니다. 후보 밖을 포함한 전체 원본 프레임의 추적 문맥이 불완전하거나 신뢰도가 낮으면
+시간 보정도 적용하지 않습니다.
+
+Internal motion 표에는 추적 신뢰도 점수와 검토/미적용 사유가 추가됩니다. 신뢰도는 보정 성공 확률이 아니며,
+기본 자동 선택은 없습니다. 미적용 후보에는 동일 영상 미리보기를 다시 만들지 않습니다.
+기존 `motion-v1` 보고서와 저장 작업은 기존 방식으로 계속 불러옵니다. 새 방식을 쓰려면 재분석하고
+새 후보를 검토·선택해 별도 작업 JSON으로 저장하세요. 예전 선택을 새 후보에 자동 이식하지 않습니다.
+
+비교 재현에만 `inspect-motion ... --analysis-version motion-v1`을 사용할 수 있습니다.
+프레임 보간·공간 안정화·형태 복원은 이 1차 개선에 포함되지 않습니다.
+개발 및 검증 현황은 [1차 진행 기록](docs/reports/MOTION_PHASE1_PROGRESS.md)을 확인하세요.
+
+### 선택적 프레임 보간·카메라 안정화 (2차)
+
+GUI의 **Video enhancements** 탭에서 각각 켜고 `Save JSON` → `Run job`으로 실행합니다.
+**Narration / TTS** 탭에서는 TTS 오디오·최종 영상용 SRT·샷 매핑 CSV 세 파일을 등록합니다. 샷 순서·Target 길이·자막 번호를 검사하고 Run job에서 TTS를 전체 영상 길이에 맞춰 음높이 유지 방식으로 조절합니다. 원본 음향은 35%로 낮춰 섞고 자막은 화면에 넣습니다. 세 파일을 모두 비우면 기존 영상 작업으로 실행됩니다. 일부만 등록하면 오류를 표시합니다. 단어별 음성 인식·문장 재배치는 수행하지 않으므로 실제 발화 동기화는 재생 검토가 필요합니다. `mute` 모드는 원본 음향만 끄며 등록된 TTS는 출력합니다.
+
+같은 탭에서 설치 글꼴을 고르거나 TTF/OTF/TTC 파일을 추가하고, 크기·세로 위치 슬라이더·좌우 정렬·색·굵기·외곽선·배경 색과 투명도를 설정할 수 있습니다. 배경/글자 추천 프리셋은 선택 즉시 적용됩니다. SRT를 선택하면 현재 시각의 한 프레임 미리보기가 설정 변경에 맞춰 자동 갱신됩니다. **자막 샘플 만들기**는 지정한 최종 영상 시각의 원본 클립 일부에 최종 자막 필터와 TTS를 적용합니다. 전체 영상 렌더링 전에 글자 모양과 소리를 확인하는 기능이며, 영상 속도 보정과 안정화 결과는 샘플에 반영되지 않습니다. 설정은 작업 JSON의 `narration.subtitle_style`에 저장됩니다.
+[항목별 HTML 설명서](src/video_manager/ui/video_enhancements_help.html)는 같은 탭의 **기능 설명 (HTML)** 버튼으로도 열 수 있습니다.
+작업 중에는 **Live previews** 탭에 완성된 경계 비교 영상이 하나씩 나타납니다. 항목을 클릭하면
+프로그램 안에서 재생·일시정지·프레임 이동이 가능합니다. 아직 인코딩 중인 영상은 표시하지 않으며,
+작업 성공 후에는 같은 탭에서 최종 결과 파일을 다시 열 수 있습니다.
+**Review & results**에서 `Final video · silent preview`를 고르면 완성 영상을 프로그램 안에서
+재생·탐색할 수 있습니다. `Play final video in system player`를 누르면 기본 영상
+플레이어에서 `corrected.mp4`가 열리고, 결과에 오디오가 있으면 함께 재생됩니다.
+작업 중 재생용 사본은 출력 폴더의 `.live-previews`에 저장되며, 최종 결과는 `results`에 저장됩니다.
+`Inspect motion`은 기존 시간 보정 후보 분석이며, 새 픽셀 처리는 `Run job`에 적용됩니다.
+기존 작업 파일에서는 보간·안정화·표시 제거가 모두 꺼집니다. `Clips & timing`의 클립 `Enabled`가 꺼지면
+해당 클립의 보간·안정화와 앞뒤 경계 속도 보정이 비활성화됩니다. 표시 제거를 켰다면 해당 클립에도 적용됩니다. 클립은 출력 영상에
+계속 포함됩니다. 목표 길이가 원본과 크게 다르면 비활성화 상태로 실행할 수 없습니다.
+클립 간 연결 속도 보정을 시도하려면 연결 양쪽 클립의 `Enabled`와 `Boundaries`의 해당
+경계 `Enabled`·`Local speed`를 켜고 `Strength`를 0보다 크게 지정합니다. 분석·보호 제약에
+따라 실제 적용은 보류될 수 있으므로 결과에서 적용 여부를 확인합니다.
+
+- **Frame interpolation:** 정확한 목표 원본 시점에서 인접한 원본 두 프레임 사이를 보간합니다.
+  현재 백엔드는 OpenCV CPU 양방향 optical flow이며 RIFE는 설치·실행하지 않습니다.
+  컷·가림·광량 변화·낮은 신뢰도에서는 가까운 프레임을 선택합니다. 안정화를 켰다면 해당 보정은 유지됩니다.
+- **Camera stabilization:** 작은 전역 이동·회전 흔들림을 줄이는 선택 기능입니다.
+  선형 팬은 유지하고, 줌·컷·추적 불확실성은 적용을 보류합니다. 화면의 공간 좌표가 바뀝니다.
+  최대 크롭 5%는 크롭 확대가 제거하는 가로/세로 전체 비율입니다. 이동·회전 때문에 가장자리별 손실은 다를 수 있습니다.
+  보정 내부의 크롭은 일정하며 보호 구간 직후와 끝에서는 원본으로 부드럽게 돌아갑니다.
+- **Watermark removal:** 새 GUI 작업은 Video Enhancer와 같은 `both` 프로필을 기본 사용합니다.
+  Gemini와 Hailuo 로고 영역을 피하는 aspect-preserving crop으로, Video enhancements에서 영역 미리보기를 열어 조정할 수 있습니다.
+  크롭은 원본 픽셀을 복원하지 않아 흔적이 적지만 가장자리 화면이 잘리고 확대됩니다.
+  저장된 기존 작업과 호환되도록 Gemini/Hailuo/custom 고정 마스크의 OpenCV inpaint 방식도 선택할 수 있습니다.
+  Inpaint는 지정 영역을 주변 픽셀로 채우므로 복잡한 배경에서는 흔적이 남을 수 있습니다.
+- 보간·안정화는 첫·마지막 프레임과 보호 구간의 원본 픽셀을 보존합니다(최종 인코딩 전 기준).
+  표시 제거를 켜면 선택된 마스크 영역은 이 구간에서도 바뀝니다.
+  길이와 출력 FPS/프레임 예산은 기존 시간표를 따릅니다. 결과의 프레임별 보간 양쪽 원본 번호·비율,
+  공간 변환 행렬·크롭·미적용 사유를 `report.json`에 남깁니다.
+- 보간 또는 안정화를 켠 최종 영상·개별 클립은 추가 압축 손실을 줄이도록 고품질 H.264로 저장합니다.
+  파일 크기가 커질 수 있습니다. 진단·비교 미리보기는 일반 압축을 사용하므로 최종 선명도는
+  `corrected.mp4`와 개별 클립에서 확인하세요. 실제 인코딩 설정은 보고서의 `encoding`에 기록됩니다.
+
+작업 JSON의 선택 항목:
+
+```json
+"enhancements": {
+  "interpolation": {"enabled": true, "backend": "cpu_flow"},
+  "stabilization": {
+    "enabled": true,
+    "strength": 0.7,
+    "smoothing_seconds": 0.4,
+    "max_crop_fraction": 0.05
+  },
+  "watermark": {
+    "enabled": true,
+    "center_x_fraction": 0.90625,
+    "center_y_fraction": 0.833333,
+    "width_fraction": 0.055,
+    "height_fraction": 0.10
+  }
+}
+```
+
+CLI `retime`에는 `--interpolate`, `--stabilize`, `--stabilize-strength`, `--stabilize-smoothing`,
+`--max-crop`, `--remove-gemini-mark`를 사용할 수 있습니다. 기본은 모두 비활성입니다. CPU 비용이 추가되며 모든 형태 변형이나
+물체의 비정상 움직임을 복원하지는 않습니다. 출력 비교 후 시각 품질을 확인하세요.
+현재 검증 결과는 [2차 진행 기록](docs/reports/MOTION_PHASE2_PROGRESS.md)에 기록합니다.

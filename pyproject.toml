@@ -14,6 +14,11 @@ gui = ["PySide6==6.8.2.1"]
 
 [project.scripts]
 video-manager = "video_manager.cli:main"
+video-frame-capture = "video_manager.ui.frame_capture:main"
+video-enhancer = "video_manager.ui.batch_enhancer:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"video_manager.ui" = ["video_enhancements_help.html"]

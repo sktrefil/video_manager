@@ -10,7 +10,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'fixtures'))
 from synthetic import make_motion_clip,make_positions_clip
 from video_manager.errors import InputError
 from video_manager.internal_motion import (analyze_sources,apply_region,digest,inspect_motion,
-                                           load_selections,region_id)
+                                           load_selections,region_id,report_payload)
 from video_manager.probe import probe
 from video_manager.render import decode_frames
 from video_manager.report import write_report
@@ -47,7 +47,9 @@ class InternalMotionTests(unittest.TestCase):
     def test_previews_explicit_selection_no_default_and_fixed_budget(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);pause,steady=self.make_inputs(root)
-            inspection=inspect_motion([str(pause),str(steady)],str(root/'inspect'))
+            # Preserve the legacy fixed-curve rendering contract. V2 has a
+            # separate no-improvement gate and need not change this hold.
+            inspection=inspect_motion([str(pause),str(steady)],str(root/'inspect'),version='motion-v1')
             report_path=inspection/'results/motion_report.json'
             report=json.loads(report_path.read_text())
             region=report['sources'][0]['regions'][0]['id']
@@ -84,7 +86,7 @@ class InternalMotionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);pause,steady=self.make_inputs(root)
             clips=[probe(p,str(i)) for i,p in enumerate([pause,steady])]
-            report=analyze_sources(clips);path=root/'report.json';write_report(path,report)
+            report=analyze_sources(clips,version='motion-v1');path=root/'report.json';write_report(path,report)
             region=report['sources'][0]['regions'][0]['id']
             with self.assertRaises(InputError):
                 load_selections([path],clips,['unknown'],[])
@@ -94,9 +96,9 @@ class InternalMotionTests(unittest.TestCase):
                 load_selections([altered],clips,[region],[])
             overlap=copy.deepcopy(report)
             other=copy.deepcopy(overlap['sources'][0]['regions'][0]);other['end_seconds']-=.1
-            other['id']=region_id(overlap['sources'][0]['sha256'],overlap['options'],other)
+            other['id']=region_id(overlap['sources'][0]['sha256'],overlap['options'],other,version='motion-v1')
             overlap['sources'][0]['regions'].append(other)
-            overlap['analysis_id']=digest({k:overlap[k] for k in ['version','options','sources']})
+            overlap['analysis_id']=digest(report_payload(overlap))
             path2=root/'overlap.json';write_report(path2,overlap)
             with self.assertRaises(InputError):
                 load_selections([path2],clips,[region,other['id']],[])

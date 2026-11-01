@@ -18,13 +18,13 @@ class ComparisonViewer(QWidget):
         self.capture=None;self.frame_count=0;self.fps=0;self.position=0
         self._epoch=0;self._start_frame=0
         layout=QVBoxLayout(self)
-        self.screen=QLabel('Open a comparison video');self.screen.setAlignment(Qt.AlignCenter)
+        self.screen=QLabel('Open a video');self.screen.setAlignment(Qt.AlignCenter)
         self.screen.setMinimumSize(480,250);layout.addWidget(self.screen)
         controls=QHBoxLayout();layout.addLayout(controls)
         self.play_button=QPushButton('Play');controls.addWidget(self.play_button)
         self.previous=QPushButton('−1 frame');controls.addWidget(self.previous)
         self.next=QPushButton('+1 frame');controls.addWidget(self.next)
-        self.loop=QCheckBox('Loop comparison');controls.addWidget(self.loop)
+        self.loop=QCheckBox('Loop video');controls.addWidget(self.loop)
         self.position_label=QLabel('No video');controls.addWidget(self.position_label)
         self.slider=QSlider(Qt.Horizontal);layout.addWidget(self.slider)
         self.timer=QTimer(self);self.timer.timeout.connect(self._tick)
@@ -38,16 +38,27 @@ class ComparisonViewer(QWidget):
         self.capture=cv2.VideoCapture(str(Path(path)))
         self.frame_count=int(self.capture.get(cv2.CAP_PROP_FRAME_COUNT));self.fps=float(self.capture.get(cv2.CAP_PROP_FPS))
         if not self.capture.isOpened() or self.frame_count<1 or self.fps<=0:
-            raise InputError(f'Cannot open comparison video: {path}')
+            self.clear()
+            raise InputError(f'Cannot open video: {path}')
         self.slider.setRange(0,self.frame_count-1)
-        self.seek(0)
+        try:self.seek(0)
+        except Exception:
+            self.clear()
+            raise
+
+    def clear(self):
+        self.pause()
+        if self.capture:self.capture.release()
+        self.capture=None;self.frame_count=0;self.fps=0;self.position=0
+        self.screen.clear();self.screen.setText('Open a video')
+        self.position_label.setText('No video');self.slider.setRange(0,0)
 
     def seek(self,frame):
         if not self.capture:return
         frame=max(0,min(self.frame_count-1,int(frame)))
         self.capture.set(cv2.CAP_PROP_POS_FRAMES,frame)
         ok,image=self.capture.read()
-        if not ok:raise InputError(f'Cannot decode comparison frame {frame}')
+        if not ok:raise InputError(f'Cannot decode video frame {frame}')
         rgb=cv2.cvtColor(image,cv2.COLOR_BGR2RGB)
         height,width=rgb.shape[:2]
         qimage=QImage(rgb.data,width,height,rgb.strides[0],QImage.Format_RGB888).copy()
@@ -83,8 +94,7 @@ class ComparisonViewer(QWidget):
             self.seek(desired);self._epoch,self._start_frame=epoch,start
 
     def closeEvent(self,event):
-        self.pause()
-        if self.capture:self.capture.release()
+        self.clear()
         super().closeEvent(event)
 
 

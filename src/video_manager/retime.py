@@ -24,12 +24,12 @@ def expand_setting(value, count, label):
     return list(values)
 
 
-def validate_rendered(path, expected, fps):
+def validate_rendered(path, expected, fps, *,expected_audio=False):
     video=probe(path,path.stem)
     if len(video.frames)!=expected:
         raise InputError(f'{path.name}: decoded frame count does not match budget')
-    if video.has_audio:
-        raise InputError(f'{path.name}: unexpected audio in muted output')
+    if video.has_audio!=expected_audio:
+        raise InputError(f'{path.name}: audio presence does not match the selected output mode')
     for i,frame in enumerate(video.frames):
         if abs(frame['source_seconds']-i/float(fps))>max(float(video.time_base),1e-6):
             raise InputError(f'{path.name}: decoded PTS has a gap or overlap')
@@ -38,7 +38,7 @@ def validate_rendered(path, expected, fps):
     return video
 
 
-def export_clip_outputs(output,result):
+def export_clip_outputs(output,result,*,has_audio=False):
     fps=Fraction(result['fps'])
     items=[]
     for clip_range in result['clip_ranges']:
@@ -47,32 +47,56 @@ def export_clip_outputs(output,result):
         for diagnostic in [False,True]:
             suffix='_diagnostic' if diagnostic else ''
             name=f"{clip_range['clip_id']}{suffix}.mp4"
-            run_tool(['ffmpeg','-v','error','-nostdin','-n','-i',str(output/f'corrected{suffix}.mp4'),
-                '-vf',f'trim=start_frame={start}:end_frame={end},setpts=PTS-STARTPTS',
-                '-an','-r',str(fps),'-fps_mode','cfr','-c:v','libx264','-threads','2',
-                '-crf','18','-pix_fmt','yuv420p',str(output/name)],timeout=180)
-            measured=validate_rendered(output/name,end-start,fps)
+            crf='1' if not diagnostic and result.get('encoding',{}).get('profile')=='enhancement_fidelity_v1' else '18'
+            source=output/f'corrected{suffix}.mp4'
+            video_filter=f'trim=start_frame={start}:end_frame={end},setpts=PTS-STARTPTS'
+            command=['ffmpeg','-v','error','-nostdin','-n','-i',str(source)]
+            if has_audio and not diagnostic:
+                begin=start/float(fps);finish=end/float(fps)
+                command.extend(['-filter_complex',
+                    f'[0:v:0]{video_filter}[v];[0:a:0]atrim=start={begin:.9f}:end={finish:.9f},asetpts=PTS-STARTPTS[a]',
+                    '-map','[v]','-map','[a]'])
+            else:command.extend(['-vf',video_filter,'-an'])
+            command.extend(['-r',str(fps),'-fps_mode','cfr','-c:v','libx264','-threads','2',
+                '-crf',crf,'-pix_fmt','yuv420p'])
+            if has_audio and not diagnostic:command.extend(['-c:a','aac','-b:a','192k','-ar','48000','-shortest'])
+            command.append(str(output/name))
+            run_tool(command,timeout=600)
+            measured=validate_rendered(output/name,end-start,fps,expected_audio=has_audio and not diagnostic)
             names.append(name)
-        items.append(dict(clip_id=clip_range['clip_id'],start_frame=start,end_frame=end,
+        from .stills import save_last_frame
+        still_name=f"{clip_range['clip_id']}_last_frame.png"
+        save_last_frame(output/f"{clip_range['clip_id']}.mp4",output/still_name)
+        item=dict(clip_id=clip_range['clip_id'],start_frame=start,end_frame=end,
                           start_seconds=start/float(fps),end_seconds=end/float(fps),
-                          measured_clip_seconds=measured.duration,files=names))
+                          measured_clip_seconds=measured.duration,files=names,last_frame_image=still_name)
+        if result.get('encoding',{}).get('profile')=='enhancement_fidelity_v1':
+            item['encoding']=dict(profile='enhancement_fidelity_v1',codec='libx264',
+                encoder_crf=1,crf=1,pixel_format='yuv420p',preset='medium',
+                diagnostic_profile='legacy_crf18_preview_not_a_quality_scoring_asset')
+        items.append(item)
     return items
 
 
 def retime(paths, output, *, targets, protect=1.0, max_speed=12.0, ramp=0.5,
            local_speed=False, remove_duplicates=False, window=0.5, strength=0.3,
-           disabled_clips=(),disabled_boundaries=(),audio_mode='mute',
+           disabled_clips=(),disabled_boundaries=(),audio_mode='preserve',
            motion_reports=(),selected_regions=(),excluded_regions=(),
-           clip_ids=None,output_fps=None,boundary_options=None,job_definition=None):
-    inputs=validate_inputs(paths)
+           clip_ids=None,output_fps=None,boundary_options=None,job_definition=None,enhancements=None,narration=None,
+           independent_clip=False):
+    from .enhancements import normalize_enhancements
+    enhancements=normalize_enhancements(enhancements)
+    if not isinstance(independent_clip,bool):
+        raise InputError('independent_clip must be boolean')
+    inputs=validate_inputs(paths,minimum=1 if independent_clip else 2)
     count=len(inputs)
     targets=expand_setting(targets,count,'targets')
     protects=expand_setting(protect,count,'protect')
     limits=expand_setting(max_speed,count,'max_speed')
     ramps=expand_setting(ramp,count,'ramp')
     validate_options(count,window,strength,disabled_clips,disabled_boundaries)
-    if audio_mode!='mute':
-        raise InputError('Audio preservation is not supported during retiming; use mute')
+    if audio_mode not in ('preserve','mute'):
+        raise InputError('audio_mode must be preserve or mute')
     if not isinstance(local_speed,bool) or not isinstance(remove_duplicates,bool):
         raise InputError('Correction enable flags must be boolean')
     if output_fps is not None:
@@ -92,6 +116,10 @@ def retime(paths, output, *, targets, protect=1.0, max_speed=12.0, ramp=0.5,
         clips=[probe(path,identifier) for path,identifier in zip(inputs,ids)]
         fps=Fraction(str(output_fps)) if output_fps is not None else clips[0].fps
         budgets=allocate_frames(targets,fps)
+        from .narration import validate_narration,render_narration
+        narration_plan=validate_narration(narration,
+            [dict(id=c.id,path=str(c.path),target_seconds=t) for c,t in zip(clips,targets)],
+            duration=sum(budgets)/float(fps),tolerance=1/float(fps)+.001)
         maps=[build_map(c,t,p,m,r,n,fps,enabled=i+1 not in disabled_clips)
               for i,(c,t,p,m,r,n) in enumerate(zip(clips,targets,protects,limits,ramps,budgets))]
         settings=boundary_options or [dict(window_seconds=window,strength=strength,local_speed=local_speed,
@@ -157,16 +185,51 @@ def retime(paths, output, *, targets, protect=1.0, max_speed=12.0, ramp=0.5,
             motion_decisions.append(dict(region_id=identifier,clip_id=clips[ci].id,
                 analysis_id=item['analysis_id'],source_sha256=item['source_sha256'],
                 applied=bool(changed),reason=reason,changed_source_selections=changed))
+            if (region.get('analysis_version') and maps[ci].optimization_reviews
+                    and maps[ci].optimization_reviews[-1]['region_id']==identifier):
+                motion_decisions[-1]['optimization']=maps[ci].optimization_reviews[-1]
         schedules=[select_schedule(c,m) for c,m in zip(clips,maps)]
+        # The video map ends at the last frame's start PTS. Audio needs the
+        # full display interval, whose endpoint is the source clip duration.
+        audio_frame_maps=[
+            [m.source_time(i/float(fps)) for i in range(m.count)]+[clip.duration]
+            for clip,m in zip(clips,maps)
+        ]
         reference=render_clips(clips,job.work,output_fps=fps)
-        candidate=render_clips(clips,job.work,schedules=schedules,prefix='corrected',output_fps=fps)
+        requested_times=[[m.source_time(i/float(fps)) for i in range(m.count)] for m in maps]
+        candidate=render_clips(clips,job.work,schedules=schedules,prefix='corrected',output_fps=fps,
+            enhancements=enhancements,source_times=requested_times,protects=protects,disabled_clips=disabled_clips)
         windows=[s['window_seconds'] for s in settings]
+        from .progress import report as report_progress
+        report_progress('Creating boundary comparisons')
         boundary_segments(job.work,reference,window=window,windows=windows)
         boundary_segments(job.work,candidate,prefix='corrected',window=window,windows=windows)
-        comparisons=compare_boundaries(job.work,reference,candidate,window,windows=windows)
-        measured=validate_rendered(job.work/'corrected.mp4',sum(budgets),fps)
+        comparisons=compare_boundaries(job.work,reference,candidate,window,windows=windows,
+                                       preview_output=job.root/'.live-previews')
+        audio_details=dict(has_audio=False,mode=audio_mode,reason='muted' if audio_mode=='mute' else 'no_source_audio')
+        has_audio=False
+        if audio_mode=='preserve' and any(clip.has_audio for clip in clips):
+            from .audio_retime import mux_audio,render_audio
+            audio_path=job.work/'retimed_audio.f32le'
+            audio_details=render_audio(clips,audio_frame_maps,budgets,fps,audio_path,progress=report_progress)
+            has_audio=audio_details['has_audio']
+            if has_audio:
+                mux_audio(job.work/'corrected.mp4',audio_path,job.work/'corrected_with_audio.mp4',fps,sum(budgets))
+                (job.work/'corrected_with_audio.mp4').replace(job.work/'corrected.mp4')
+            audio_path.unlink(missing_ok=True)
+        narration_details=dict(enabled=False)
+        if narration_plan:
+            narration_details=render_narration(job.work,narration_plan,has_background=has_audio,
+                crf=1 if candidate.get('encoding',{}).get('profile')=='enhancement_fidelity_v1' else 18,
+                progress=report_progress)
+            has_audio=True
+            audio_details.update(has_audio=True,narration=True,reason='narration_mixed')
+        measured=validate_rendered(job.work/'corrected.mp4',sum(budgets),fps,expected_audio=has_audio)
+        report_progress('Validating and exporting clips')
+        from .stills import save_last_frame
+        save_last_frame(job.work/'corrected.mp4',job.work/'corrected_last_frame.png')
         validate_rendered(job.work/'corrected_diagnostic.mp4',sum(budgets),fps)
-        timeline=export_clip_outputs(job.work,candidate)
+        timeline=export_clip_outputs(job.work,candidate,has_audio=has_audio)
         for index,item in enumerate(timeline):
             item.update(requested_seconds=targets[index],budget_frames=budgets[index],
                         actual_seconds=budgets[index]/float(fps),
@@ -179,7 +242,9 @@ def retime(paths, output, *, targets, protect=1.0, max_speed=12.0, ramp=0.5,
             raise InputError('Total target error exceeds one frame')
         if any(file_hash(p)!=sha for p,sha in zip(inputs,hashes)):
             raise InputError('An input changed during processing')
-        write_report(job.work/'report.json',dict(stage='C' if job_definition else 'B2' if motion_reports else 'B1',tools=tools,audio_mode='mute',
+        candidate['audio']=audio_details
+        write_report(job.work/'report.json',dict(stage='C' if job_definition else 'B2' if motion_reports else 'B1',tools=tools,
+            audio_mode=audio_mode,audio=audio_details,narration=narration_details,
             job_definition=job_definition,
             quality_status='technical_candidate_real_visual_quality_unverified',
             internal_motion=dict(reports=[str(p) for p in motion_reports],selected=list(selected_regions),
@@ -187,7 +252,7 @@ def retime(paths, output, *, targets, protect=1.0, max_speed=12.0, ramp=0.5,
             settings=dict(targets=targets,protect=protects,max_speed=limits,ramp=ramps,window=window,
                           strength=strength,local_speed=local_speed,remove_duplicates=remove_duplicates,
                           disabled_clips=list(disabled_clips),disabled_boundaries=list(disabled_boundaries),
-                          output_fps=str(fps),boundary_options=settings),
+                          output_fps=str(fps),boundary_options=settings,enhancements=enhancements),
             clips=[dict(c.metadata(),sha256=sha) for c,sha in zip(clips,hashes)],
             source_measurements=measurements,decisions=decisions,baseline=reference,corrected=candidate,
             comparisons=comparisons,timeline=timeline,

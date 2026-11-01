@@ -5,10 +5,11 @@ import subprocess
 from .errors import ToolError
 
 
-def run_tool(args: list[str], *, timeout: float = 30) -> subprocess.CompletedProcess:
+def run_tool(args: list[str], *, timeout: float = 30, cwd=None) -> subprocess.CompletedProcess:
     try:
-        result = subprocess.run(args, capture_output=True, text=True, timeout=timeout,
-                                check=False, stdin=subprocess.DEVNULL)
+        result = subprocess.run(args, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=timeout,
+                                check=False, stdin=subprocess.DEVNULL, cwd=cwd,
+                                creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
     except FileNotFoundError as exc:
         raise ToolError(f"Required tool not found: {args[0]}") from exc
     except (OSError, subprocess.TimeoutExpired) as exc:

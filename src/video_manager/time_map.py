@@ -46,6 +46,8 @@ class TimeMap:
     stretched: bool = False
     source_warps: list = field(default_factory=list)
     region_warps: list = field(default_factory=list)
+    knot_warps: list = field(default_factory=list)
+    optimization_reviews: list = field(default_factory=list)
 
     def base_time(self, t):
         if not (self.compressed or self.stretched):
@@ -80,12 +82,22 @@ class TimeMap:
                 q=(u-amount*math.sin(2*math.pi*u)*math.sin(math.pi*u)**2/(2*math.pi)
                    if kind=='hold' else u+amount*u*u*(1-u)**2)
                 value=start+(end-start)*q
+        for knots in self.knot_warps:
+            if knots[0][0]<=value<=knots[-1][0]:
+                right=bisect_left([p[0] for p in knots],value)
+                if right==0:
+                    value=knots[0][1]
+                else:
+                    x0,y0=knots[right-1];x1,y1=knots[right]
+                    value=y0+(value-x0)*(y1-y0)/(x1-x0)
         return value
 
     def speed_bound(self):
         return (max(1.0, self.peak) * math.prod(1+abs(w[2]) for w in self.source_warps)
                 * math.prod(1+(2 if kind=='hold' else .25)*abs(amount)
-                            for _,_,kind,amount in self.region_warps))
+                            for _,_,kind,amount in self.region_warps)
+                * math.prod(max(1.0,max((b[1]-a[1])/(b[0]-a[0]) for a,b in zip(knots,knots[1:])))
+                            for knots in self.knot_warps))
 
     def describe(self):
         return dict(compressed=self.compressed, stretched=self.stretched,
@@ -96,7 +108,9 @@ class TimeMap:
                     frame_policy="nearest_source_frame_no_interpolation", max_speed=self.max_speed,
                     conservative_composed_speed_bound=self.speed_bound(),
                     source_last_display_seconds=self.source_end, output_last_display_seconds=self.output_end,
-                    output_frames=self.count, internal_region_warps=[dict(start=s,end=e,kind=k,amount=a) for s,e,k,a in self.region_warps], source_warps=[dict(side=s,width=w,alpha=a) for s,w,a in self.source_warps])
+                    output_frames=self.count, optimized_region_warps=self.knot_warps,
+                    optimization_reviews=self.optimization_reviews,
+                    internal_region_warps=[dict(start=s,end=e,kind=k,amount=a) for s,e,k,a in self.region_warps], source_warps=[dict(side=s,width=w,alpha=a) for s,w,a in self.source_warps])
 
 
 def build_map(clip, target, protect, max_speed, ramp, count, fps, *, enabled=True):

@@ -1,5 +1,7 @@
 .venv/
+.venv_video_manager/
 __pycache__/
 *.py[cod]
 *.egg-info/
 outputs/
+dist/

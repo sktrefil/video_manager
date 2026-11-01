@@ -21,12 +21,14 @@ class Clip:
     has_audio: bool
     vfr: bool
     sample_aspect_ratio: Fraction
+    audio_offset_seconds: float = 0.0
 
     def metadata(self):
         return {"id": self.id, "path": str(self.path), "width": self.width,
                 "height": self.height, "fps": str(self.fps), "time_base": str(self.time_base),
                 "duration_seconds": self.duration, "has_audio": self.has_audio,
                 "vfr": self.vfr, "sample_aspect_ratio": str(self.sample_aspect_ratio),
+                "audio_offset_seconds": self.audio_offset_seconds,
                 "first_pts": self.frames[0]["pts"], "frames": self.frames}
 
 
@@ -73,8 +75,20 @@ def probe(path: Path, clip_id: str) -> Clip:
         sar = Fraction(stream.get("sample_aspect_ratio", "1:1").replace(":", "/"))
         if sar <= 0:
             sar = Fraction(1)
+        audio_streams=[s for s in streams if s.get('codec_type')=='audio']
+        audio_offset=0.0
+        if audio_streams:
+            audio=audio_streams[0]
+            try:
+                if audio.get('start_time') not in (None,'N/A'):
+                    audio_start=Fraction(str(audio['start_time']))
+                elif audio.get('start_pts') not in (None,'N/A'):
+                    audio_start=Fraction(int(audio['start_pts']))*Fraction(audio.get('time_base','1/1'))
+                else:audio_start=first
+            except (ValueError,ZeroDivisionError):audio_start=first
+            audio_offset=float(audio_start-first)
         return Clip(clip_id, path, int(stream["width"]), int(stream["height"]), fps,
                     tb, frames, duration, any(s.get("codec_type") == "audio" for s in streams),
-                    bool(deltas and max(deltas) - min(deltas) > 1), sar)
+                    bool(deltas and max(deltas) - min(deltas) > 1), sar,audio_offset)
     except (ValueError, KeyError, TypeError, ZeroDivisionError) as exc:
         raise InputError(f"Unsupported video timestamps/metadata: {path}: {exc}") from exc

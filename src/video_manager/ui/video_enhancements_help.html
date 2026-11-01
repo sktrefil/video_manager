@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>영상 보정 기능 안내 · Video Manager</title>
+  <style>
+    :root { color-scheme: light; font-family: "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif; color: #173048; background: #f5f8fb; }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; line-height: 1.65; }
+    a { color: #07548b; text-underline-offset: .18em; }
+    a:focus-visible { outline: 3px solid #e6a23b; outline-offset: 3px; }
+    .skip { position: absolute; left: 1rem; top: -5rem; background: #fff; padding: .6rem 1rem; z-index: 3; }
+    .skip:focus { top: 1rem; }
+    .masthead { background: linear-gradient(125deg, #102c48, #0d566c); color: #fff; padding: 3rem max(1.2rem, calc((100vw - 1060px) / 2)); }
+    .eyebrow { font-size: .78rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: #a8e4e5; }
+    h1 { margin: .4rem 0 .8rem; font-size: clamp(2rem, 4vw, 3rem); line-height: 1.2; }
+    .masthead p { max-width: 64ch; margin: 0; color: #e4f2f5; font-size: 1.05rem; }
+    .layout { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 2.2rem; width: min(1060px, calc(100% - 2.4rem)); margin: 0 auto; padding: 2.2rem 0 4rem; }
+    nav { align-self: start; position: sticky; top: 1rem; background: #fff; border: 1px solid #dce5ed; border-radius: 14px; padding: 1.1rem; box-shadow: 0 5px 24px #1730480a; }
+    nav strong { display: block; margin-bottom: .65rem; font-size: .85rem; color: #547088; }
+    nav a { display: block; padding: .38rem .2rem; font-size: .92rem; font-weight: 700; text-decoration: none; }
+    nav a:hover { text-decoration: underline; }
+    main { min-width: 0; }
+    section { scroll-margin-top: 1.3rem; margin-bottom: 2rem; }
+    h2 { margin: 0 0 .9rem; font-size: 1.45rem; line-height: 1.3; }
+    h3 { margin: 1.1rem 0 .4rem; font-size: 1.06rem; }
+    p { margin: .45rem 0 .8rem; }
+    ul, ol { margin: .55rem 0 .9rem; padding-left: 1.45rem; }
+    li { margin: .3rem 0; }
+    .panel { background: #fff; border: 1px solid #dce5ed; border-radius: 16px; padding: 1.3rem 1.5rem; box-shadow: 0 5px 24px #1730480a; }
+    .panel + .panel { margin-top: 1rem; }
+    .accent { border-left: 5px solid #0b8c8f; }
+    .notice { border-left: 5px solid #d68e22; background: #fff9ee; }
+    .tag { display: inline-block; padding: .13rem .55rem; border-radius: 999px; background: #d9f2f0; color: #0b5c60; font-weight: 800; font-size: .78rem; vertical-align: middle; }
+    .muted { color: #567087; }
+    .steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; padding: 0; list-style: none; }
+    .steps li { margin: 0; padding: .9rem 1rem; border-radius: 12px; background: #eaf2f7; }
+    .steps b { display: block; margin-bottom: .3rem; color: #07548b; }
+    .table-wrap { overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; min-width: 590px; text-align: left; }
+    th, td { padding: .7rem .8rem; border-bottom: 1px solid #dce5ed; vertical-align: top; }
+    th { background: #eaf2f7; font-size: .9rem; }
+    td:first-child { font-weight: 800; width: 24%; }
+    code { background: #edf3f7; color: #173048; padding: .1rem .3rem; border-radius: 4px; font-family: Consolas, monospace; font-size: .92em; }
+    .example { padding: .75rem 1rem; border-radius: 10px; background: #eef8f5; border-left: 4px solid #18a27c; }
+    footer { font-size: .9rem; color: #567087; margin-top: 2rem; }
+    @media (max-width: 760px) { .layout { display: block; } nav { position: static; margin-bottom: 1.7rem; } nav a { display: inline-block; margin-right: .8rem; } .steps { grid-template-columns: 1fr; } .panel { padding: 1.1rem; } }
+    @media print { .masthead { background: #fff; color: #173048; padding: 0 0 1rem; } .masthead p, .eyebrow { color: #173048; } .layout { display: block; width: 100%; padding: 0; } nav, .skip { display: none; } .panel { break-inside: avoid; box-shadow: none; } a { color: inherit; } }
+  </style>
+</head>
+<body>
+  <a class="skip" href="#main">본문으로 건너뛰기</a>
+  <header class="masthead">
+    <div class="eyebrow">Video Manager · 사용 안내</div>
+    <h1>프레임 보간 · 카메라 안정화 · 표시 제거</h1>
+    <p>Video enhancements 탭의 선택 기능을 언제 켜고 어떻게 조절할지 설명합니다. 처음에는 모두 꺼져 있습니다.</p>
+  </header>
+  <div class="layout">
+    <nav aria-label="목차">
+      <strong>이 페이지에서</strong>
+      <a href="#start">시작 순서</a>
+      <a href="#narration">TTS · 자막 파일</a>
+      <a href="#interpolation">프레임 보간</a>
+      <a href="#stabilization">카메라 안정화</a>
+      <a href="#watermark">고정 표시 제거</a>
+      <a href="#settings">수치 설정</a>
+      <a href="#examples">상황별 시작값</a>
+      <a href="#results">결과 확인</a>
+    </nav>
+    <main id="main">
+      <section id="start">
+        <h2>시작 순서</h2>
+        <div class="panel accent">
+          <ol class="steps">
+            <li><b>1 · 작업 확인</b>JSON을 불러오고 Clips &amp; timing의 Target, Protect, Enabled를 확인합니다.</li>
+            <li><b>2 · 기능 선택</b>Video enhancements에서 필요한 체크박스만 켭니다. 안정화를 켰다면 아래 수치를 조절합니다.</li>
+            <li><b>3 · 실행과 검토</b>Save JSON으로 설정을 저장한 뒤 Run job을 누릅니다. 결과 영상과 Review &amp; results를 확인합니다.</li>
+          </ol>
+          <p class="muted">이 기능은 <strong>Run job</strong>에서 적용됩니다. Inspect motion 버튼은 기존의 시간 보정 후보를 분석합니다.</p>
+          <p><strong>중요 · Clips &amp; timing의 Enabled:</strong> 끄면 클립은 영상에 이어 붙지만 해당 클립의 인핸스먼츠와 앞뒤 경계의 속도 보정이 함께 비활성화됩니다. 목표 시간이 원본과 크게 다르면 실행 자체가 거절될 수 있습니다. 클립 연결의 꿀렁임을 줄이려면 연결 양쪽 클립의 Enabled를 켜 두세요.</p>
+          <p><strong>Audio:</strong> 기본값은 원본 오디오를 유지합니다. 영상 길이 변경에 따라 원본 오디오의 속도와 음높이가 바뀔 수 있습니다. <em>Mute source audio</em>는 원본 음향만 끄며, 등록한 TTS는 계속 포함됩니다.</p>
+        </div>
+      </section>
+
+      <section id="narration">
+        <h2>Narration / TTS · 파일 등록</h2>
+        <div class="panel accent">
+          <p><strong>Narration / TTS 탭</strong>에서 각 항목의 Select 버튼으로 알맞은 파일을 고릅니다. 경로는 작업 JSON에 저장되며, JSON을 다시 불러오면 등록한 파일이 복원됩니다. 아래 예시는 Spanish Armada 프로젝트의 파일명입니다.</p>
+          <ul>
+            <li><strong>TTS audio:</strong> 실제 음성 원본 <code>스페인TTS.mp3</code> (또는 MP3/WAV 파일)</li>
+            <li><strong>Final video subtitles:</strong> 최종 120초 영상의 자막 시각 <code>Spanish_Armada_Subtitles_120s_Resolve.srt</code></li>
+            <li><strong>Subtitle to 30-shot mapping:</strong> 컷별 자막 대응표 <code>TTS_Subtitle_30Shot_Mapping.csv</code>. 예를 들어 01-01 샷(0–4초)은 자막 1, 2와 겹칩니다.</li>
+          </ul>
+          <p>필요한 파일은 위 세 개뿐입니다. 별도의 추정 타이밍 SRT와 상세 타이밍 CSV는 업로드하지 않아도 됩니다.</p>
+          <p><strong>검사:</strong> 세 파일 등록 후 자동으로, 또는 <em>TTS · SRT · CSV 검사</em> 버튼으로 확인합니다. CSV의 샷 순서·길이·자막 번호가 클립 Target과 SRT에 맞아야 합니다. 일부 파일만 등록했거나 시간이 맞지 않으면 Run job을 시작할 수 없습니다.</p>
+          <p><strong>자막 모양과 샘플:</strong> Narration / TTS 탭에서 설치된 폰트를 고르거나 TTF·OTF·TTC 파일을 추가할 수 있습니다. 글자 크기와 색, 굵기, 검은 외곽선, 좌·중·우 정렬, 여백, 배경 색과 투명도를 설정하세요. 세로 위치는 슬라이더로 위에서 아래까지 세밀하게 조절합니다. 추천 프리셋은 선택 즉시 적용됩니다. 기본 추천은 굵은 흰 글자와 검은 외곽선입니다. 밝거나 복잡한 장면에서는 검정 배경을 켜고 투명도를 55~70%로 설정하면 글자가 안정적으로 읽힙니다. 왼쪽 아래 차콜 상자는 다큐 내레이션에 어울립니다. SRT를 선택하면 큰 미리보기 프레임이 설정 변경에 따라 자동 갱신됩니다. <em>자막 샘플 만들기</em>를 누르면 현재 샷에서 최대 5초 동안 자막과 TTS를 확인할 수 있습니다. 설정은 작업 JSON에 저장됩니다. 샘플은 해당 시각의 원본 클립 일부를 사용하므로 영상 속도 보정·안정화 결과는 반영되지 않습니다.</p>
+          <p><strong>Run job 결과:</strong> TTS 전체 길이를 영상 길이에 맞추면서 음높이를 유지합니다. 원본 음향은 35%로 낮춰 TTS와 섞고, 설정한 자막 모양을 SRT 시각에 맞춰 화면에 넣습니다. 최종 <code>corrected.mp4</code>와 개별 클립에 적용되며 <code>narration.srt</code>도 결과 폴더에 보관합니다.</p>
+          <p class="notice"><strong>동기화 범위:</strong> 전체 음성 길이를 맞추는 방식입니다. 음성을 인식하여 각 문장·단어를 재배치하지는 않습니다. 추정 자막은 실제 발화와 다를 수 있으므로 최종 영상을 소리와 함께 확인하세요.</p>
+        </div>
+      </section>
+
+      <section id="interpolation">
+        <h2>Frame interpolation <span class="tag">기본: 끔</span></h2>
+        <div class="panel">
+          <p><strong>언제 켜나요?</strong> 목표 시간에 맞추면서 같은 원본 프레임이 반복되어 움직임이 계단식으로 보일 때 사용합니다.</p>
+          <p><strong>어떤 효과인가요?</strong> 요청된 시각이 원본 두 프레임 사이에 있으면 움직임을 추정해 중간 영상을 만듭니다. 출력 목표 시간과 프레임 수는 늘리지 않습니다.</p>
+          <p><strong>설정:</strong> Frame interpolation을 체크합니다. 이 탭에는 보간 강도 수치가 없습니다. 현재 CPU 방식이 사용되어 처리 시간이 길어질 수 있습니다.</p>
+          <p><strong>적용 보류:</strong> 컷, 가림, 상반된 움직임, 밝기 변화, 낮은 추적 신뢰도에서는 가까운 원본 프레임을 선택합니다. 안정화도 켰다면 그 프레임에는 안정화만 적용될 수 있습니다.</p>
+          <p class="example">보간이 켜져 있어도 모든 프레임을 생성하지는 않습니다. 결과의 <strong>interpolated</strong> 수가 0이면 해당 클립에 실제 보간이 적용되지 않은 것입니다.</p>
+        </div>
+      </section>
+
+      <section id="stabilization">
+        <h2>Camera stabilization <span class="tag">기본: 끔</span></h2>
+        <div class="panel">
+          <p><strong>언제 켜나요?</strong> 카메라 전체가 작게 흔들려 수평선이나 배경이 불안정할 때 시도합니다.</p>
+          <p><strong>어떤 효과인가요?</strong> 화면 전체의 작은 이동·회전을 추정해 카메라 경로를 부드럽게 합니다. 의도된 일정한 팬은 유지하려고 하며 화면 가장자리를 일부 잘라야 할 수 있습니다.</p>
+          <p><strong>설정:</strong> Camera stabilization을 체크한 뒤 아래의 강도·평활 시간·최대 크롭을 조절합니다. 먼저 기본값 <strong>0.7 / 0.4초 / 5%</strong>로 비교해 보세요.</p>
+          <p><strong>적용 보류:</strong> 줌, 장면 전환, 카메라 움직임을 신뢰할 수 없는 경우, 또는 필요한 크롭이 한도를 넘는 경우에는 적용하지 않을 수 있습니다. 한 클립에서 안정화가 전체적으로 보류될 수 있습니다.</p>
+          <p class="example">선박 원본 4개를 시험했을 때 안정화는 모두 보류됐습니다. 체크했다고 해서 해당 영상의 흔들림이 제거됐다고 해석하면 안 됩니다.</p>
+        </div>
+      </section>
+
+      <section id="watermark">
+        <h2>워터마크 제거 <span class="tag">기본: 로고 회피 크롭</span></h2>
+        <div class="panel">
+          <p><strong>기본 동작:</strong> 새 작업은 Video Enhancer와 같은 Gemini + Hailuo 로고 회피 크롭을 사용합니다. 원본 픽셀을 새로 만들지 않아 인페인팅 흔적을 피하는 대신 화면 가장자리가 잘리고 확대됩니다.</p>
+          <p><strong>영역 미리보기:</strong> 클립을 선택하고 Preview / set crop regions를 눌러 앞·중간·끝 장면의 기본 영역을 확인하세요. 실제 로고와 다르면 드래그해 조정하고, 영역을 적용하면 같은 영역이 모든 클립에 사용됩니다. 안정화가 켜져 있으면 렌더링 시 움직임 범위를 고려해 크롭을 계산합니다.</p>
+          <p><strong>대체 방식:</strong> 드롭다운에서 Gemini, Hailuo 또는 custom fixed mask를 선택하면 주변 픽셀로 로고 자리를 채웁니다. 이 모드에서는 Center X/Y와 Mask width/height를 조절할 수 있지만 복잡한 무늬에는 복원 흔적이 남을 수 있습니다.</p>
+        </div>
+      </section>
+
+      <section id="settings">
+        <h2>수치 설정 이해하기</h2>
+        <div class="panel table-wrap">
+          <table>
+            <thead><tr><th>화면 항목</th><th>범위 · 기본값</th><th>조절하면 생기는 일</th></tr></thead>
+            <tbody>
+              <tr><td>Stabilization strength</td><td>0~1 · <strong>0.7</strong></td><td>보정 이동·회전의 크기입니다. 0이면 보정하지 않습니다. 높이면 흔들림을 더 줄일 수 있지만 크롭 요구와 화면 변형 가능성도 커집니다. 크롭 한도 때문에 실제 적용 강도는 자동으로 낮아질 수 있습니다.</td></tr>
+              <tr><td>Smoothing seconds</td><td>0.05~2초 · <strong>0.4초</strong></td><td>카메라 경로를 평활화하는 시간 범위입니다. 길수록 빠른 흔들림을 더 넓은 시간에 걸쳐 억제하려고 합니다. 의도된 움직임까지 둔하게 느껴지면 줄여 비교하세요.</td></tr>
+              <tr><td>Maximum crop (total width / height)</td><td>0~15% · <strong>5%</strong></td><td>안정화를 위해 허용하는 <em>가로·세로 전체</em>의 최대 크롭 비율입니다. 5%는 각 가장자리에서 정확히 2.5%씩 자른다는 뜻이 아닙니다. 낮추면 화면 가장자리를 더 보존하지만 보정이 보류될 수 있습니다.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="examples">
+        <h2>상황별 시작값</h2>
+        <div class="panel">
+          <ul>
+            <li><strong>클립 간 연결이 꿀렁이는 경우:</strong> 연결 양쪽 클립의 Clips &amp; timing → Enabled를 켜고, Boundaries에서 해당 연결의 Enabled와 Local speed를 켭니다. Strength가 0보다 큰지 확인하세요. 실제 경계 속도 보정은 분석 결과와 Protect 제약에 따라 보류될 수 있으므로 결과 보고서의 적용 여부를 확인합니다.</li>
+            <li><strong>반복 프레임이 눈에 띄는 경우:</strong> 보간만 켜서 비교합니다. 컷·가림이 많으면 보간된 프레임 수를 확인합니다.</li>
+            <li><strong>작은 카메라 흔들림:</strong> 안정화만 켜고 0.7 / 0.4초 / 5%로 시작합니다. 결과의 크롭과 미적용 사유를 확인합니다.</li>
+            <li><strong>두 문제가 함께 있는 경우:</strong> 두 기능을 켜고 각각 켰을 때의 영상과 비교합니다. 처리 순서는 안정화 다음 보간입니다.</li>
+            <li><strong>화면 가장자리가 중요한 경우:</strong> 최대 크롭을 낮춰 비교합니다. 한도가 너무 작으면 안정화가 적용되지 않을 수 있습니다.</li>
+            <li><strong>우측 하단 별 또는 하단 Hailuo 표시:</strong> 기본 로고 회피 크롭을 사용하고 Preview / set crop regions에서 실제 영역을 확인합니다. 화면 가장자리 손실을 피하려면 인페인팅 모드를 비교할 수 있습니다.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section id="results">
+        <h2>결과에서 확인할 것</h2>
+        <div class="panel notice">
+          <ul>
+            <li><strong>Review &amp; results:</strong> 클립별 보간·안정화 적용 프레임 수와 대표적인 보류 사유를 확인합니다.</li>
+            <li><strong>최종 영상:</strong> Review &amp; results에서 Final video를 선택하면 소리 없는 화면 미리보기를 볼 수 있습니다. Play final video in system player를 누르면 기본 영상 플레이어로 <code>corrected.mp4</code>가 열리고, 결과에 오디오가 있으면 함께 재생됩니다. 움직임, 이음새, 표시 제거 영역을 확인하세요. 자세한 근거는 <code>report.json</code>에 기록됩니다.</li>
+            <li><strong>보호 구간:</strong> 시간 보정·보간·안정화는 첫·마지막 프레임과 Protect로 지정한 초반 구간의 원본 픽셀을 보존합니다. 표시 제거를 켜면 해당 마스크 영역은 모든 프레임에서 바뀝니다.</li>
+            <li><strong>처리 비용:</strong> 영상 보정 기능은 CPU 시간이 추가됩니다. 기능을 켠 최종 영상은 선명도 보존을 위해 큰 파일이 될 수 있습니다. 진단용 미리보기의 화질은 최종 영상과 다를 수 있습니다.</li>
+          </ul>
+          <p><strong>판정 기준:</strong> 체크박스가 켜진 상태와 실제 적용은 다릅니다. 출력에서 효과가 적용된 프레임 수와 보류 사유를 먼저 확인하고, 영상 전체를 눈으로 검토하세요.</p>
+        </div>
+      </section>
+      <footer>Video Manager · 이 문서는 프로그램과 함께 로컬에 저장되며 인터넷 연결 없이 열립니다.</footer>
+    </main>
+  </div>
+</body>
+</html>

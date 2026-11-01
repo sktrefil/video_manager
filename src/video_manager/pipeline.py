@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import json
 import tempfile
+import time
 import uuid
 
 from .errors import InputError
@@ -56,7 +57,14 @@ def job_directory(output: str | Path, inputs: list[Path]):
     status = {"job_id": uuid.uuid4().hex, "inputs": [str(p) for p in inputs]}
     try:
         yield paths
-        work.rename(paths.results)
+        deadline=time.monotonic()+5
+        while True:
+            try:
+                work.rename(paths.results)
+                break
+            except PermissionError:
+                if time.monotonic()>=deadline:raise
+                time.sleep(.1)
         status["status"] = "success"
     except BaseException as exc:
         status.update(status="cancelled" if isinstance(exc, KeyboardInterrupt) else "failed",
@@ -128,7 +136,8 @@ def boundaries(paths: list[str], output: str, *, window=0.5, strength=0.3,
         candidate = render_clips(clips, job.work, schedules=schedules, prefix='corrected')
         boundary_segments(job.work, reference, window=window)
         boundary_segments(job.work, candidate, prefix='corrected', window=window)
-        comparisons = compare_boundaries(job.work, reference, candidate, window)
+        comparisons = compare_boundaries(job.work, reference, candidate, window,
+                                         preview_output=job.root/'.live-previews')
         for prefix, result in [('baseline', reference), ('corrected', candidate)]:
             decoded = probe(job.work / f'{prefix}.mp4', prefix)
             if len(decoded.frames) != result['frame_count']:
